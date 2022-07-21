@@ -21,7 +21,6 @@ describe('Adapter factory', () => {
 
   beforeEach(() => {
     if (cds.services['db']) {
-
       // @ts-ignore
       cds.services['db'].disconnect()
     }

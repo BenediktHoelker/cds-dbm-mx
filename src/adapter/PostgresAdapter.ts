@@ -36,39 +36,38 @@ const getCredentialsForClient = (credentials) => {
 
 export class PostgresAdapter extends BaseAdapter {
   /**
-  * @override
-  */
-   async _cloneSchema(tenant:string) {
+   * @override
+   */
+  async _cloneSchema(tenant: string) {
     const credentials = this.options.service.credentials
     const defaultSchema = this.options.migrations.schema!.default
     const client = new Client(getCredentialsForClient(credentials))
     await client.connect()
-    const sql = `SELECT clone_schema('` + defaultSchema + `', '` + tenant + `', '0');` as string;
-    const response = await client.query(sql);
+    const sql = (`SELECT clone_schema('` + defaultSchema + `', '` + tenant + `', '0');`) as string
+    const response = await client.query(sql)
     this.logger.log(`[cds-dbm] - Schema ` + tenant + ` created.`)
     client.end()
-   }
+  }
   /**
-  * @override
-  */
-   async _getSchemas(): Promise<string[]> {
-
+   * @override
+   */
+  async _getSchemas(): Promise<string[]> {
     const credentials = this.options.service.credentials
     const defaultSchema = this.options.migrations.schema!.default
     const client = new Client(getCredentialsForClient(credentials))
 
     await client.connect()
-    const response = await client.query('SELECT schema_name FROM information_schema.schemata;');
+    const response = await client.query('SELECT schema_name FROM information_schema.schemata;')
     client.end()
 
-    const existingSchemas = response.rows as string[];
-    return existingSchemas;
+    const existingSchemas = response.rows as string[]
+    return existingSchemas
   }
 
   /**
    * @override
    */
-   async _createDropSchemaFunction() {
+  async _createDropSchemaFunction() {
     const credentials = this.options.service.credentials
     const defaultSchema = this.options.migrations.schema!.default
     const client = new Client(getCredentialsForClient(credentials))
@@ -76,8 +75,8 @@ export class PostgresAdapter extends BaseAdapter {
     await client.connect()
     await client.query(`SET search_path TO ${defaultSchema};`)
     try {
-      var sql = fs.readFileSync(path.join(__dirname, './sql/drop_schema.sql')).toString();
-      sql = sql.replace('postgres', credentials.user);
+      var sql = fs.readFileSync(path.join(__dirname, './sql/drop_schema.sql')).toString()
+      sql = sql.replace('postgres', credentials.user)
       await client.query(sql)
       //this.logger.log(`[cds-dbm] - Drop Schema function created`)
     } catch (error) {
@@ -93,15 +92,15 @@ export class PostgresAdapter extends BaseAdapter {
    * @override
    */
   async _createCloneSchemaFunction() {
-      const credentials = this.options.service.credentials
-      const defaultSchema = this.options.migrations.schema!.default
-      const client = new Client(getCredentialsForClient(credentials))
-      await client.connect()
-      await client.query(`SET search_path TO ${defaultSchema};`)
+    const credentials = this.options.service.credentials
+    const defaultSchema = this.options.migrations.schema!.default
+    const client = new Client(getCredentialsForClient(credentials))
+    await client.connect()
+    await client.query(`SET search_path TO ${defaultSchema};`)
 
     try {
-      var sql = fs.readFileSync(path.join(__dirname, './sql/clone_schema.sql')).toString();
-      sql = sql.replace('postgres', credentials.user);
+      var sql = fs.readFileSync(path.join(__dirname, './sql/clone_schema.sql')).toString()
+      sql = sql.replace('postgres', credentials.user)
       await client.query(sql)
       //this.logger.log(`[cds-dbm] - Clone Schema function created`)
     } catch (error) {
@@ -115,18 +114,17 @@ export class PostgresAdapter extends BaseAdapter {
 
   async getViewDefinition(viewName: string): Promise<ViewDefinition> {
     const credentials = this.options.service.credentials
-    const schema = this.options.migrations.schema?.default;
-    const query = `SELECT table_name, view_definition FROM information_schema.views WHERE table_schema = '` + schema +`' AND table_name = $1 ORDER BY table_name;` as string;
+    const schema = this.options.migrations.schema?.default
+    const query = (`SELECT table_name, view_definition FROM information_schema.views WHERE table_schema = '` +
+      schema +
+      `' AND table_name = $1 ORDER BY table_name;`) as string
     const client = new Client(getCredentialsForClient(credentials))
     await client.connect()
-    const { rows } = await client.query(
-      query,
-      [viewName]
-    )
+    const { rows } = await client.query(query, [viewName])
     await client.end()
-    
-    const pattern = schema + `.`;
-    const regex = new RegExp(pattern, "g");
+
+    const pattern = schema + `.`
+    const regex = new RegExp(pattern, 'g')
 
     const viewDefinition: ViewDefinition = {
       name: viewName,
@@ -220,9 +218,9 @@ export class PostgresAdapter extends BaseAdapter {
     return liquibaseOptions
   }
 
-  async _synchronizeCloneDatabase(schema:string) {
+  async _synchronizeCloneDatabase(schema: string) {
     const credentials = this.options.service.credentials
-    const cloneSchema = schema;
+    const cloneSchema = schema
     const temporaryChangelogFile = `${this.options.migrations.deploy.tmpFile}`
 
     const client = new Client(getCredentialsForClient(credentials))

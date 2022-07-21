@@ -253,7 +253,7 @@ Multitenancy support is currently experimental and not intended for produtive us
 
 On deployment, schemas `tenant1` and `tenant2` will be created as clones of default schema `public`.
 
-Currently, tenant data will be lost on re-deployment. a fix is being worked on... 
+Currently, tenant data will be lost on re-deployment. a fix is being worked on...
 
 ```JSON
   "cds": {
@@ -274,8 +274,6 @@ Currently, tenant data will be lost on re-deployment. a fix is being worked on..
     }
   }
 ```
-
-
 
 ### `Custom Build Task`
 
@@ -310,7 +308,6 @@ cds build
 
 This will generate a specifc set of files into the `gen/db` (or any other configured) folder, that will be deployed to SAP BTP CF environment.
 
-
 An example configuration for a `mta.yml` leveraging the build fragments:
 
 ```yaml
@@ -318,7 +315,7 @@ An example configuration for a `mta.yml` leveraging the build fragments:
     type: custom
     path: gen/db
     parameters:
-      buildpacks: [https://github.com/cloudfoundry/apt-buildpack#v0.2.2, nodejs_buildpack] 
+      buildpacks: [https://github.com/cloudfoundry/apt-buildpack#v0.2.2, nodejs_buildpack]
       no-route: true
       no-start: true
       disk-quota: 2GB
@@ -327,11 +324,11 @@ An example configuration for a `mta.yml` leveraging the build fragments:
       - name: deploy_to_postgresql
         command: ./deploy.sh
         disk-quota: 2GB
-        memory: 512MB      
+        memory: 512MB
     build-parameters:
       ignore: ["node_modules/"]
     requires:
-      - name: devtoberfest-database 
+      - name: devtoberfest-database
 
 resources:
   - name: devtoberfest-database
@@ -341,7 +338,7 @@ resources:
       service-plan: trial
       skip-service-updates:
         parameters: true
-    type: org.cloudfoundry.managed-service      
+    type: org.cloudfoundry.managed-service
 ```
 
 ## Sponsors

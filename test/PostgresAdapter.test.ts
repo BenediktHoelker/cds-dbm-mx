@@ -17,11 +17,9 @@ import { BaseAdapter } from '../src/adapter/BaseAdapter'
 describe('PostgresAdapter', () => {
   beforeEach(() => {
     if (cds.services['db']) {
-      
       // @ts-ignore
       cds.services['db'].disconnect()
     }
-
   })
 
   const options: configOptions = {
@@ -59,7 +57,7 @@ describe('PostgresAdapter', () => {
       cds.env.requires.db = Object.assign({ kind: 'postgres' }, options.service)
       // @ts-ignore
       cds.env.requires.postgres = options.service
-      console.log(cds.env.requires);
+      console.log(cds.env.requires)
       adapter = await adapterFactory('db', options)
     })
     it('+ dropAll: false + should remove all cds based tables and views from the database', async () => {
@@ -113,8 +111,8 @@ describe('PostgresAdapter', () => {
     })
 
     it('should create the database if the create-db option is given and Clone Tenant', async () => {
-      options.migrations.multitenant = true;
-      options.migrations.schema.tenants = ['tenant'];
+      options.migrations.multitenant = true
+      options.migrations.schema.tenants = ['tenant']
       await dropDatabase(options.service.credentials)
       await adapter.deploy({ createDb: true })
 
@@ -123,10 +121,13 @@ describe('PostgresAdapter', () => {
       expect(existingTablesInPostgres.length).toBeGreaterThan(0)
 
       // check tenant
-      const existingTablesInPostgresTenant0 = await getTableNamesFromPostgres(options, options.migrations.schema.tenants[0])
+      const existingTablesInPostgresTenant0 = await getTableNamesFromPostgres(
+        options,
+        options.migrations.schema.tenants[0]
+      )
       expect(existingTablesInPostgresTenant0.length).toBeGreaterThan(0)
 
-      options.migrations.multitenant = false;
+      options.migrations.multitenant = false
     })
 
     it('should create the complete data model in an empty database', async () => {
@@ -159,8 +160,8 @@ describe('PostgresAdapter', () => {
 
       it('should add additional tables and views and sync tenants', async () => {
         // load an updated model
-        options.migrations.multitenant = true;
-        options.migrations.schema.tenants = ['tenant'];
+        options.migrations.multitenant = true
+        options.migrations.schema.tenants = ['tenant']
 
         options.service.model = ['./test/app/srv/beershop-service_addTables.cds']
         adapter = await adapterFactory('db', options)
@@ -173,11 +174,10 @@ describe('PostgresAdapter', () => {
         for (const entity of tableAndViewNamesFromCds) {
           expect(existingTablesInPostgres.map((i) => i.table_name)).toContain(entity.name.toLowerCase())
         }
-        options.migrations.multitenant = false;
-        options.migrations.schema.tenants = [];
+        options.migrations.multitenant = false
+        options.migrations.schema.tenants = []
       })
-
-    });
+    })
 
     describe('- handling deltas -', () => {
       beforeEach(async () => {
@@ -205,8 +205,8 @@ describe('PostgresAdapter', () => {
           expect(existingTablesInPostgres.map((i) => i.table_name)).toContain(entity.name.toLowerCase())
         }
       })
-      
-      it('should Sync Multitenant schemas ', async () => {;
+
+      it('should Sync Multitenant schemas ', async () => {
         // load an updated model
         options.service.model = ['./test/app/srv/beershop-service_addTables.cds']
         adapter = await adapterFactory('db', options)

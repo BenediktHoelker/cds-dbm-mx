@@ -34,19 +34,19 @@ export abstract class BaseAdapter {
   /*
    * Abstract functions
    */
-  
-   /**
+
+  /**
    * Clone default schema
    *
    * @abstract
    */
-    abstract _cloneSchema(existing_schema: string, new_schema:string): Promise<void>
+  abstract _cloneSchema(existing_schema: string, new_schema: string): Promise<void>
   /**
    * Get all Schemas
    *
    * @abstract
    */
-     abstract _getSchemas(): Promise<string[]>
+  abstract _getSchemas(): Promise<string[]>
   /**
    * Clone Tenent Schema
    *
@@ -72,7 +72,7 @@ export abstract class BaseAdapter {
    *
    * @abstract
    */
-  abstract _synchronizeCloneDatabase(clone:string): Promise<void>
+  abstract _synchronizeCloneDatabase(clone: string): Promise<void>
 
   /**
    * Drop the views from the clone, since updating views is hard.
@@ -200,7 +200,6 @@ export abstract class BaseAdapter {
    *
    */
   async deploy({ autoUndeploy = false, loadMode = null, dryRun = false, createDb = false }) {
-
     this.logger.log(`[cds-dbm] - starting delta database deployment of service ${this.serviceKey}`)
     if (createDb) {
       await this._createDatabase()
@@ -284,20 +283,20 @@ export abstract class BaseAdapter {
     liquibaseOptions.changeLogFile = temporaryChangelogFile
 
     const updateSQL: any = await liquibase(liquibaseOptions).run(updateCmd)
-    const newSchemas = [];
+    const newSchemas = []
     if (this.options.migrations.multitenant) {
-      const existingSchemas = await this._getSchemas();
+      const existingSchemas = await this._getSchemas()
       for (let i = 0; i < this.options.migrations.schema?.tenants.length; i++) {
         try {
-          const tenant = this.options.migrations.schema?.tenants[i];
-          const found = existingSchemas.find((schema: any) => schema.schema_name === tenant);
+          const tenant = this.options.migrations.schema?.tenants[i]
+          const found = existingSchemas.find((schema: any) => schema.schema_name === tenant)
           liquibaseOptions.defaultSchemaName = tenant
           if (found) {
             // Update Tenant Schema
             await liquibase(liquibaseOptions).run(updateCmd)
             this.logger.log(`[cds-dbm] - Schema ` + tenant + ` updated.`)
           } else {
-            newSchemas.push(tenant);
+            newSchemas.push(tenant)
           }
         } catch (err) {
           console.log(err.message)
@@ -306,7 +305,6 @@ export abstract class BaseAdapter {
 
       //Create Tenant Schemas
       for (let i = 0; i < newSchemas.length; i++) {
-
         const temporaryChangelogFile = `${this.options.migrations.deploy.tmpFile}`
         if (fs.existsSync(temporaryChangelogFile)) {
           fs.unlinkSync(temporaryChangelogFile)
@@ -316,7 +314,7 @@ export abstract class BaseAdapter {
           fs.mkdirSync(dirname)
         }
 
-        await this._synchronizeCloneDatabase(newSchemas[i]);
+        await this._synchronizeCloneDatabase(newSchemas[i])
         this.logger.log(`[cds-dbm] - Schema ` + newSchemas[i] + ` created.`)
       }
     }
@@ -330,7 +328,7 @@ export abstract class BaseAdapter {
     } else {
       this.logger.log(updateSQL.stdout)
     }
-    
+
     //unlink if not already completed through new tenant schemas
     if (newSchemas.length === 0) {
       fs.unlinkSync(temporaryChangelogFile)

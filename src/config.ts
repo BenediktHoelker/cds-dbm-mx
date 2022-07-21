@@ -1,5 +1,5 @@
 interface migrationOptions {
-  multitenant?: boolean,
+  multitenant?: boolean
   schema?: {
     default: string
     clone: string
@@ -30,7 +30,7 @@ interface credentials {
   password?: string
   sslcert?: string
   sslrootcert?: string
-};
+}
 
 interface serviceOptions {
   name: string
@@ -68,10 +68,10 @@ const config = async (service: string): Promise<configOptions> => {
   await cds.connect()
 
   const serviceOptions = cds.env.requires[service]
-  
+
   // @ts-ignore
   const migrationOptions = cds.env.migrations[service]
-  
+
   return {
     migrations: migrationOptions,
     service: serviceOptions,

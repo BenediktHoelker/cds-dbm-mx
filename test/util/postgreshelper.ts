@@ -1,6 +1,6 @@
 import { Client } from 'pg'
 import { PostgresDatabase } from '../../src/types/PostgresDatabase'
-import { configOptions, credentials } from '../../src/config';
+import { configOptions, credentials } from '../../src/config'
 
 function getCredentialsForClient(credentials) {
   if (typeof credentials.username !== 'undefined') {
@@ -22,14 +22,16 @@ function getCredentialsForClient(credentials) {
 }
 
 async function getTableNamesFromPostgres(options: configOptions, tenant?: string) {
-  let schema = options.migrations.schema.default;
-  
+  let schema = options.migrations.schema.default
+
   // override default schema with tenant schema
   if (tenant) {
-    schema = tenant;
+    schema = tenant
   }
-  const credentials = options.service.credentials;
-  const query = `SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = '` + schema + `' ORDER BY table_name;` as string;
+  const credentials = options.service.credentials
+  const query = (`SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = '` +
+    schema +
+    `' ORDER BY table_name;`) as string
   const client = new Client(getCredentialsForClient(credentials))
   await client.connect()
   const { rows } = await client.query(query)
@@ -39,9 +41,10 @@ async function getTableNamesFromPostgres(options: configOptions, tenant?: string
 }
 
 async function getViewNamesFromPostgres(options: configOptions) {
-
-  const credentials = options.service.credentials as credentials;
-  const query = `SELECT table_name FROM information_schema.views WHERE table_schema = '` + options.migrations.schema.default + `' ORDER BY table_name;` as string;
+  const credentials = options.service.credentials as credentials
+  const query = (`SELECT table_name FROM information_schema.views WHERE table_schema = '` +
+    options.migrations.schema.default +
+    `' ORDER BY table_name;`) as string
   const client = new Client(getCredentialsForClient(credentials))
   await client.connect()
   const { rows } = await client.query(query)
@@ -51,9 +54,10 @@ async function getViewNamesFromPostgres(options: configOptions) {
 }
 
 const extractColumnNamesFromPostgres = async (options: configOptions, table) => {
-
-  const credentials = options.service.credentials as credentials;
-  const query = `SELECT column_name FROM information_schema.columns WHERE table_schema = '` + options.migrations.schema.default + `' AND table_name = $1 ORDER BY column_name;` as string;
+  const credentials = options.service.credentials as credentials
+  const query = (`SELECT column_name FROM information_schema.columns WHERE table_schema = '` +
+    options.migrations.schema.default +
+    `' AND table_name = $1 ORDER BY column_name;`) as string
   const client = new Client(getCredentialsForClient(credentials))
   await client.connect()
   const { rows } = await client.query({
