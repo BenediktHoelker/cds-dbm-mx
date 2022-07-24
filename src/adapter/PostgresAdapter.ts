@@ -292,9 +292,9 @@ export class PostgresAdapter extends BaseAdapter {
 
     const serviceInstance = cds.services[this.serviceKey] as PostgresDatabase
 
-    const query = this.cdsSQL.map((q) => serviceInstance.cdssql2pgsql(q)).join(';')
+    const query = this.cdsSQL.map((q) => serviceInstance.cdssql2pgsql(q)).join(' ')
 
-    await client.query(serviceInstance.cdssql2pgsql(query))
+    await client.query(query)
 
     return client.end()
   }
