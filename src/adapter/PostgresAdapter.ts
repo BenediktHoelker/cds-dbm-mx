@@ -132,6 +132,7 @@ export class PostgresAdapter extends BaseAdapter {
     const query =
       `SELECT table_name, view_definition FROM information_schema.views WHERE table_schema = '${schema}' AND table_name = $1 ORDER BY table_name;` as string
     const client = new Client(getCredentialsForClient(credentials))
+
     await client.connect()
     const { rows } = await client.query(query, [viewName])
     await client.end()

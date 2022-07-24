@@ -111,6 +111,8 @@ export abstract class BaseAdapter {
 
   abstract getViewDefinition(viewName: string): Promise<ViewDefinition>
 
+  abstract beforeDeploy(changelog: ChangeLog): void
+
   /*
    * API functions
    */
@@ -150,40 +152,46 @@ export abstract class BaseAdapter {
    * @param {string} outputFile
    */
   public async diff(outputFile = null) {
-    let keepFile = true
     await this.initCds()
     await this._deployCdsToReferenceDatabase()
+
+    const saveOutputFile = outputFile || 'tmp/diff.txt'
+
+    let keepFile = true
     if (!outputFile) {
-      outputFile = 'tmp/diff.txt'
       keepFile = false
     }
 
     // run update to create internal liquibase tables
-    let liquibaseOptions = this.liquibaseOptionsFor('update')
-    liquibaseOptions.defaultSchemaName = this.options.migrations.schema.reference
+    let options = this.liquibaseOptionsFor('update')
+    options.defaultSchemaName = this.options.migrations.schema.reference
 
     // Revisit: Possible liquibase bug to not support changelogs by absolute path?
     // liquibaseOptions.changeLogFile = `${__dirname}../../template/emptyChangelog.json`
     const tmpChangelogPath = 'tmp/emptyChangelog.json'
     const dirname = path.dirname(tmpChangelogPath)
+
     if (!fs.existsSync(dirname)) {
       fs.mkdirSync(dirname)
     }
     fs.copyFileSync(`${__dirname}/../../template/emptyChangelog.json`, tmpChangelogPath)
-    liquibaseOptions.changeLogFile = tmpChangelogPath
-    await liquibase(liquibaseOptions).run('update')
+
+    options.changeLogFile = tmpChangelogPath
+    await liquibase(options).run('update')
     fs.unlinkSync(tmpChangelogPath)
 
     // create the diff
-    liquibaseOptions = this.liquibaseOptionsFor('diff')
-    liquibaseOptions.outputFile = outputFile
-    await liquibase(liquibaseOptions).run('diff')
+    options = this.liquibaseOptionsFor('diff')
+    options.outputFile = saveOutputFile
+
+    await liquibase(options).run('diff')
+
     if (!keepFile) {
-      const buffer = fs.readFileSync(liquibaseOptions.outputFile)
+      const buffer = fs.readFileSync(options.outputFile)
       this.logger.log(buffer.toString())
-      fs.unlinkSync(liquibaseOptions.outputFile)
+      fs.unlinkSync(options.outputFile)
     } else {
-      this.logger.log(`[cds-dbm] - diff file generated at ${liquibaseOptions.outputFile}`)
+      this.logger.log(`[cds-dbm] - diff file generated at ${options.outputFile}`)
     }
   }
 
@@ -196,6 +204,7 @@ export abstract class BaseAdapter {
    */
   async deploy({ autoUndeploy = false, loadMode = null, dryRun = false, createDb = false }) {
     this.logger.log(`[cds-dbm] - starting delta database deployment of service ${this.serviceKey}`)
+
     if (createDb) {
       await this._createDatabase()
       await this._createDropSchemaFunction()
@@ -204,10 +213,13 @@ export abstract class BaseAdapter {
     await this.initCds()
 
     const temporaryChangelogFile = `${this.options.migrations.deploy.tmpFile}`
+
     if (fs.existsSync(temporaryChangelogFile)) {
       fs.unlinkSync(temporaryChangelogFile)
     }
+
     const dirname = path.dirname(temporaryChangelogFile)
+
     if (!fs.existsSync(dirname)) {
       fs.mkdirSync(dirname)
     }
@@ -219,12 +231,14 @@ export abstract class BaseAdapter {
     await this._dropViewsFromCloneDatabase()
 
     // Create the initial changelog
-    let liquibaseOptions = this.liquibaseOptionsFor('diffChangeLog')
-    liquibaseOptions.defaultSchemaName = this.options.migrations.schema.default
-    liquibaseOptions.referenceDefaultSchemaName = this.options.migrations.schema.clone
-    liquibaseOptions.changeLogFile = temporaryChangelogFile
+    const diffChangeLogOptions = {
+      ...this.liquibaseOptionsFor('diffChangeLog'),
+      defaultSchemaName: this.options.migrations.schema.default,
+      referenceDefaultSchemaName: this.options.migrations.schema.clone,
+      changeLogFile: temporaryChangelogFile,
+    }
 
-    await liquibase(liquibaseOptions).run('diffChangeLog')
+    await liquibase(diffChangeLogOptions).run('diffChangeLog')
     const dropViewsChangeLog = ChangeLog.fromFile(temporaryChangelogFile)
     fs.unlinkSync(temporaryChangelogFile)
 
@@ -232,11 +246,10 @@ export abstract class BaseAdapter {
     await this._deployCdsToReferenceDatabase()
 
     // Update the changelog with the real changes and added views
-    liquibaseOptions = this.liquibaseOptionsFor('diffChangeLog')
-    liquibaseOptions.defaultSchemaName = this.options.migrations.schema.clone
-    liquibaseOptions.changeLogFile = temporaryChangelogFile
+    diffChangeLogOptions.defaultSchemaName = this.options.migrations.schema.clone
+    diffChangeLogOptions.changeLogFile = temporaryChangelogFile
 
-    await liquibase(liquibaseOptions).run('diffChangeLog')
+    await liquibase(diffChangeLogOptions).run('diffChangeLog')
 
     const diffChangeLog = ChangeLog.fromFile(temporaryChangelogFile)
 
@@ -252,11 +265,16 @@ export abstract class BaseAdapter {
     diffChangeLog.addDropStatementsForUndeployEntities(this.options.migrations.deploy.undeployFile)
 
     const viewDefinitions = {}
+
     for (const changeLog of diffChangeLog.data.databaseChangeLog) {
       if (changeLog.changeSet.changes[0].dropView) {
         const { viewName } = changeLog.changeSet.changes[0].dropView
+
+        // REVISIT: await in loop
+        // eslint-disable-next-line no-await-in-loop
         viewDefinitions[viewName] = await this.getViewDefinition(viewName)
       }
+
       if (changeLog.changeSet.changes[0].createView) {
         const { viewName } = changeLog.changeSet.changes[0].createView
         viewDefinitions[viewName] = {
@@ -265,6 +283,7 @@ export abstract class BaseAdapter {
         }
       }
     }
+
     diffChangeLog.reorderChangelog(viewDefinitions)
 
     // Call hooks
@@ -274,43 +293,44 @@ export abstract class BaseAdapter {
 
     // Either log the update sql or deploy it to the database
     const updateCmd = dryRun ? 'updateSQL' : 'update'
-    liquibaseOptions = this.liquibaseOptionsFor(updateCmd)
-    liquibaseOptions.changeLogFile = temporaryChangelogFile
 
-    const updateSQL: any = await liquibase(liquibaseOptions).run(updateCmd)
+    const updateOptions = { ...this.liquibaseOptionsFor(updateCmd), changeLogFile: temporaryChangelogFile }
+
+    const updateSQL: any = await liquibase(updateOptions).run(updateCmd)
     const newSchemas = []
-    if (this.options.migrations.multitenant) {
+
+    if (this.options.migrations.multitenant && this.options.migrations.schema.tenants) {
       const existingSchemas = await this._getSchemas()
-      for (let i = 0; i < this.options.migrations.schema?.tenants.length; i++) {
-        try {
-          const tenant = this.options.migrations.schema?.tenants[i]
-          const found = existingSchemas.find((schema: any) => schema.schema_name === tenant)
-          liquibaseOptions.defaultSchemaName = tenant
-          if (found) {
-            // Update Tenant Schema
-            await liquibase(liquibaseOptions).run(updateCmd)
-            this.logger.log(`[cds-dbm] - Schema ${tenant} updated.`)
-          } else {
-            newSchemas.push(tenant)
-          }
-        } catch (err) {
-          console.log(err.message)
+
+      for (const tenant of this.options.migrations.schema.tenants) {
+        const found = existingSchemas.find((schema: any) => schema.schema_name === tenant)
+
+        if (found) {
+          // Update Tenant Schema
+          // REVISIT: keep await in loop for now, to get separated errors
+          // eslint-disable-next-line no-await-in-loop
+          await liquibase({ ...updateOptions, defaultSchemaName: tenant }).run(updateCmd)
+          this.logger.log(`[cds-dbm] - Schema ${tenant} updated.`)
+        } else {
+          newSchemas.push(tenant)
         }
       }
 
       // Create Tenant Schemas
-      for (let i = 0; i < newSchemas.length; i++) {
-        const temporaryChangelogFile = `${this.options.migrations.deploy.tmpFile}`
+      for (const newSchema of newSchemas) {
         if (fs.existsSync(temporaryChangelogFile)) {
           fs.unlinkSync(temporaryChangelogFile)
         }
-        const dirname = path.dirname(temporaryChangelogFile)
+
         if (!fs.existsSync(dirname)) {
           fs.mkdirSync(dirname)
         }
 
-        await this._synchronizeCloneDatabase(newSchemas[i])
-        this.logger.log(`[cds-dbm] - Schema ${newSchemas[i]} created.`)
+        // REVISIT: keep await in loop for now, to get separated errors
+        // eslint-disable-next-line no-await-in-loop
+        await this._synchronizeCloneDatabase(newSchema)
+
+        this.logger.log(`[cds-dbm] - Schema ${newSchema} created.`)
       }
     }
 

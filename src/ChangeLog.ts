@@ -1,5 +1,4 @@
 import fs from 'fs'
-import yaml from 'js-yaml'
 
 export class ChangeLog {
   data: any
@@ -9,8 +8,8 @@ export class ChangeLog {
   }
 
   public static fromFile(changelogPath): ChangeLog {
-    let fileContents = fs.readFileSync(changelogPath, 'utf8')
-    let data: any = JSON.parse(fileContents)
+    const fileContents = fs.readFileSync(changelogPath, 'utf8')
+    const data: any = JSON.parse(fileContents)
 
     return new ChangeLog(data)
   }
@@ -238,7 +237,7 @@ export class ChangeLog {
     for (const view of undeployList.views) {
       this.data.databaseChangeLog.push({
         changeSet: {
-          id: `${timestamp}-${counter++}`,
+          id: `${timestamp}-${(counter += 1)}`,
           author: 'cds-dbm auto-undeploy (generated)',
           preConditions: [
             {
@@ -262,7 +261,7 @@ export class ChangeLog {
     for (const table of undeployList.tables) {
       this.data.databaseChangeLog.push({
         changeSet: {
-          id: `${timestamp}-${counter++}`,
+          id: `${timestamp}-${(counter += 1)}`,
           author: 'cds-dbm auto-undeploy (generated)',
           preConditions: [
             {
