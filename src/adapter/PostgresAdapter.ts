@@ -3,26 +3,38 @@ import fs from 'fs'
 import path from 'path'
 import liquibase from '../liquibase'
 import { BaseAdapter } from './BaseAdapter'
-import { liquibaseOptions } from './../config'
-import { PostgresDatabase } from './../types/PostgresDatabase'
+import { liquibaseOptions } from '../config'
+import { PostgresDatabase } from '../types/PostgresDatabase'
 import { ChangeLog } from '../ChangeLog'
 import { ViewDefinition } from '../types/AdapterTypes'
 
+/**
+ * Removes PostgreSQL specific view statements from the changelog, that may cloud deployments
+ * to break.
+ *
+ * Revisit: Check why this is the case.
+ *
+ * @param {Changelog} changelog
+ */
+const _removePostgreSystemViewsFromChangelog = (changelog) => {
+  for (const changeLog of changelog.data.databaseChangeLog) {
+    changeLog.changeSet.changes = changeLog.changeSet.changes.filter((change) => {
+      return (
+        !(change.createView && change.createView.viewName.includes('pg_stat_statements')) &&
+        !(change.dropView && change.dropView.viewName.includes('pg_stat_statements')) &&
+        !(change.createView && change.createView.viewName.includes('pg_buffercache')) &&
+        !(change.dropView && change.dropView.viewName.includes('pg_buffercache'))
+      )
+    })
+  }
+}
+
 const getCredentialsForClient = (credentials) => {
-  if (typeof credentials.username !== 'undefined') {
-    credentials.user = credentials.username
-  }
-  if (typeof credentials.hostname !== 'undefined') {
-    credentials.host = credentials.hostname
-  }
-  if (typeof credentials.dbname !== 'undefined') {
-    credentials.database = credentials.dbname
-  }
   const config: ClientConfig = {
-    user: credentials.user,
+    user: credentials.user || credentials.username,
     password: credentials.password,
-    host: credentials.host,
-    database: credentials.database,
+    host: credentials.host || credentials.hostname,
+    database: credentials.database || credentials.dbname,
     port: credentials.port,
   }
   if (credentials.sslrootcert) {
@@ -39,21 +51,23 @@ export class PostgresAdapter extends BaseAdapter {
    * @override
    */
   async _cloneSchema(tenant: string) {
-    const credentials = this.options.service.credentials
+    const { credentials } = this.options.service
     const defaultSchema = this.options.migrations.schema!.default
     const client = new Client(getCredentialsForClient(credentials))
+    const sql = `SELECT clone_schema('${defaultSchema}', '${tenant}', '0');` as string
+
     await client.connect()
-    const sql = (`SELECT clone_schema('` + defaultSchema + `', '` + tenant + `', '0');`) as string
-    const response = await client.query(sql)
-    this.logger.log(`[cds-dbm] - Schema ` + tenant + ` created.`)
+    await client.query(sql)
+
+    this.logger.log(`[cds-dbm] - Schema ${tenant} created.`)
     client.end()
   }
+
   /**
    * @override
    */
   async _getSchemas(): Promise<string[]> {
-    const credentials = this.options.service.credentials
-    const defaultSchema = this.options.migrations.schema!.default
+    const { credentials } = this.options.service
     const client = new Client(getCredentialsForClient(credentials))
 
     await client.connect()
@@ -68,17 +82,17 @@ export class PostgresAdapter extends BaseAdapter {
    * @override
    */
   async _createDropSchemaFunction() {
-    const credentials = this.options.service.credentials
+    const { credentials } = this.options.service
     const defaultSchema = this.options.migrations.schema!.default
     const client = new Client(getCredentialsForClient(credentials))
 
     await client.connect()
     await client.query(`SET search_path TO ${defaultSchema};`)
     try {
-      var sql = fs.readFileSync(path.join(__dirname, './sql/drop_schema.sql')).toString()
+      let sql = fs.readFileSync(path.join(__dirname, './sql/drop_schema.sql')).toString()
       sql = sql.replace('postgres', credentials.user)
       await client.query(sql)
-      //this.logger.log(`[cds-dbm] - Drop Schema function created`)
+      // this.logger.log(`[cds-dbm] - Drop Schema function created`)
     } catch (error) {
       switch (error.code) {
         default:
@@ -92,17 +106,17 @@ export class PostgresAdapter extends BaseAdapter {
    * @override
    */
   async _createCloneSchemaFunction() {
-    const credentials = this.options.service.credentials
+    const { credentials } = this.options.service
     const defaultSchema = this.options.migrations.schema!.default
     const client = new Client(getCredentialsForClient(credentials))
     await client.connect()
     await client.query(`SET search_path TO ${defaultSchema};`)
 
     try {
-      var sql = fs.readFileSync(path.join(__dirname, './sql/clone_schema.sql')).toString()
+      let sql = fs.readFileSync(path.join(__dirname, './sql/clone_schema.sql')).toString()
       sql = sql.replace('postgres', credentials.user)
       await client.query(sql)
-      //this.logger.log(`[cds-dbm] - Clone Schema function created`)
+      // this.logger.log(`[cds-dbm] - Clone Schema function created`)
     } catch (error) {
       switch (error.code) {
         default:
@@ -113,17 +127,16 @@ export class PostgresAdapter extends BaseAdapter {
   }
 
   async getViewDefinition(viewName: string): Promise<ViewDefinition> {
-    const credentials = this.options.service.credentials
+    const { credentials } = this.options.service
     const schema = this.options.migrations.schema?.default
-    const query = (`SELECT table_name, view_definition FROM information_schema.views WHERE table_schema = '` +
-      schema +
-      `' AND table_name = $1 ORDER BY table_name;`) as string
+    const query =
+      `SELECT table_name, view_definition FROM information_schema.views WHERE table_schema = '${schema}' AND table_name = $1 ORDER BY table_name;` as string
     const client = new Client(getCredentialsForClient(credentials))
     await client.connect()
     const { rows } = await client.query(query, [viewName])
     await client.end()
 
-    const pattern = schema + `.`
+    const pattern = `${schema}.`
     const regex = new RegExp(pattern, 'g')
 
     const viewDefinition: ViewDefinition = {
@@ -138,8 +151,9 @@ export class PostgresAdapter extends BaseAdapter {
    * @override
    * @param changelog
    */
+  // eslint-disable-next-line class-methods-use-this
   beforeDeploy(changelog: ChangeLog) {
-    this._removePostgreSystemViewsFromChangelog(changelog)
+    _removePostgreSystemViewsFromChangelog(changelog)
   }
 
   /**
@@ -148,30 +162,38 @@ export class PostgresAdapter extends BaseAdapter {
    * @param table
    */
   async _truncateTable(table: any): Promise<void> {
-    const credentials = this.options.service.credentials
+    const { credentials } = this.options.service
     const client = new Client(getCredentialsForClient(credentials))
 
     await client.connect()
     await client.query(`TRUNCATE ${table} RESTART IDENTITY`)
     client.end()
   }
+
   /**
    *
    */
   async _dropViewsFromCloneDatabase(): Promise<void> {
-    const credentials = this.options.service.credentials
+    const { credentials } = this.options.service
     const cloneSchema = this.options.migrations.schema!.clone
     const client = new Client(getCredentialsForClient(credentials))
 
     await client.connect()
     await client.query(`SET search_path TO ${cloneSchema};`)
 
-    for (const query of this.cdsSQL) {
-      const [, table, entity] = query.match(/^\s*CREATE (?:(TABLE)|VIEW)\s+"?([^\s(]+)"?/im) || []
-      if (!table) {
-        await client.query(`DROP VIEW IF EXISTS ${entity} CASCADE`)
-      }
-    }
+    const queries = this.cdsSQL
+      .map((query) => {
+        const [, table, entity] = query.match(/^\s*CREATE (?:(TABLE)|VIEW)\s+"?([^\s(]+)"?/im) || []
+        if (!table) {
+          return `DROP VIEW IF EXISTS ${entity} CASCADE`
+        }
+        return ''
+      })
+      .filter(Boolean)
+
+    const query = queries.join(';')
+
+    await client.query(query)
 
     return client.end()
   }
@@ -183,18 +205,18 @@ export class PostgresAdapter extends BaseAdapter {
    * @param {string} cmd
    */
   liquibaseOptionsFor(cmd: string): liquibaseOptions {
-    const credentials = this.options.service.credentials
-    var url = `jdbc:postgresql://${credentials.host || credentials.hostname}:${credentials.port}/${
+    const { credentials } = this.options.service
+    let url = `jdbc:postgresql://${credentials.host || credentials.hostname}:${credentials.port}/${
       credentials.database || credentials.dbname
     }`
     if (credentials.sslrootcert) {
       url += '?ssl=true'
     }
 
-    const liquibaseOptions: liquibaseOptions = {
+    const options: liquibaseOptions = {
       username: credentials.user || credentials.username,
       password: this.options.service.credentials.password,
-      url: url,
+      url,
       classpath: `${__dirname}/../../drivers/postgresql-42.3.2.jar`,
       driver: 'org.postgresql.Driver',
     }
@@ -202,11 +224,11 @@ export class PostgresAdapter extends BaseAdapter {
     switch (cmd) {
       case 'diffChangeLog':
       case 'diff':
-        liquibaseOptions.referenceUrl = liquibaseOptions.url
-        liquibaseOptions.referenceUsername = liquibaseOptions.username
-        liquibaseOptions.referencePassword = liquibaseOptions.password
-        liquibaseOptions.defaultSchemaName = this.options.migrations.schema!.default
-        liquibaseOptions.referenceDefaultSchemaName = this.options.migrations.schema!.reference
+        options.referenceUrl = options.url
+        options.referenceUsername = options.username
+        options.referencePassword = options.password
+        options.defaultSchemaName = this.options.migrations.schema!.default
+        options.referenceDefaultSchemaName = this.options.migrations.schema!.reference
         break
       case 'update':
       case 'updateSQL':
@@ -215,11 +237,11 @@ export class PostgresAdapter extends BaseAdapter {
         break
     }
 
-    return liquibaseOptions
+    return options
   }
 
   async _synchronizeCloneDatabase(schema: string) {
-    const credentials = this.options.service.credentials
+    const { credentials } = this.options.service
     const cloneSchema = schema
     const temporaryChangelogFile = `${this.options.migrations.deploy.tmpFile}`
 
@@ -230,24 +252,24 @@ export class PostgresAdapter extends BaseAdapter {
     await client.end()
 
     // Basically create a copy of the schema
-    let liquibaseOptions = this.liquibaseOptionsFor('diffChangeLog')
-    liquibaseOptions.defaultSchemaName = cloneSchema
-    liquibaseOptions.referenceDefaultSchemaName = this.options.migrations.schema!.default
-    liquibaseOptions.changeLogFile = temporaryChangelogFile
+    let options = this.liquibaseOptionsFor('diffChangeLog')
+    options.defaultSchemaName = cloneSchema
+    options.referenceDefaultSchemaName = this.options.migrations.schema!.default
+    options.changeLogFile = temporaryChangelogFile
 
-    await liquibase(liquibaseOptions).run('diffChangeLog')
+    await liquibase(options).run('diffChangeLog')
 
     // Remove unnecessary stuff
     const diffChangeLog = ChangeLog.fromFile(temporaryChangelogFile)
-    this._removePostgreSystemViewsFromChangelog(diffChangeLog)
+    _removePostgreSystemViewsFromChangelog(diffChangeLog)
     diffChangeLog.toFile(temporaryChangelogFile)
 
     // Now deploy the copy to the clone
-    liquibaseOptions = this.liquibaseOptionsFor('update')
-    liquibaseOptions.defaultSchemaName = cloneSchema
-    liquibaseOptions.changeLogFile = temporaryChangelogFile
+    options = this.liquibaseOptionsFor('update')
+    options.defaultSchemaName = cloneSchema
+    options.changeLogFile = temporaryChangelogFile
 
-    await liquibase(liquibaseOptions).run('update')
+    await liquibase(options).run('update')
 
     fs.unlinkSync(temporaryChangelogFile)
 
@@ -258,18 +280,20 @@ export class PostgresAdapter extends BaseAdapter {
    * @override
    */
   async _deployCdsToReferenceDatabase() {
-    const credentials = this.options.service.credentials
+    const { credentials } = this.options.service
     const referenceSchema = this.options.migrations.schema!.reference
     const client = new Client(getCredentialsForClient(credentials))
+
     await client.connect()
     await client.query(`DROP SCHEMA IF EXISTS ${referenceSchema} CASCADE`)
     await client.query(`CREATE SCHEMA ${referenceSchema}`)
     await client.query(`SET search_path TO ${referenceSchema};`)
 
     const serviceInstance = cds.services[this.serviceKey] as PostgresDatabase
-    for (const query of this.cdsSQL) {
-      await client.query(serviceInstance.cdssql2pgsql(query))
-    }
+
+    const query = this.cdsSQL.map((q) => serviceInstance.cdssql2pgsql(q)).join(';')
+
+    await client.query(serviceInstance.cdssql2pgsql(query))
 
     return client.end()
   }
@@ -295,6 +319,7 @@ export class PostgresAdapter extends BaseAdapter {
       switch (error.code) {
         case '42P04': // already exists
           this.logger.log(`[cds-dbm] - database ${database} is already present`)
+          break
         case '23505': // concurrent attempt
           break
         default:
@@ -303,26 +328,5 @@ export class PostgresAdapter extends BaseAdapter {
     }
 
     client.end()
-  }
-
-  /**
-   * Removes PostgreSQL specific view statements from the changelog, that may cloud deployments
-   * to break.
-   *
-   * Revisit: Check why this is the case.
-   *
-   * @param {Changelog} changelog
-   */
-  private _removePostgreSystemViewsFromChangelog(changelog) {
-    for (const changeLog of changelog.data.databaseChangeLog) {
-      changeLog.changeSet.changes = changeLog.changeSet.changes.filter((change) => {
-        return (
-          !(change.createView && change.createView.viewName.includes('pg_stat_statements')) &&
-          !(change.dropView && change.dropView.viewName.includes('pg_stat_statements')) &&
-          !(change.createView && change.createView.viewName.includes('pg_buffercache')) &&
-          !(change.dropView && change.dropView.viewName.includes('pg_buffercache'))
-        )
-      })
-    }
   }
 }

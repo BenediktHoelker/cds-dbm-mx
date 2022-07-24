@@ -1,22 +1,25 @@
 import { ConstructedQuery } from '@sap/cds/apis/ql'
-import liquibase from '../liquibase'
 import fs from 'fs'
 import path from 'path'
-import { Logger } from 'winston'
-import { configOptions, liquibaseOptions } from './../config'
+import liquibase from '../liquibase'
+import { configOptions, liquibaseOptions } from '../config'
 import { ChangeLog } from '../ChangeLog'
 import { sortByCasadingViews } from '../util'
-import { DataLoader } from '../DataLoader'
 import { ViewDefinition } from '../types/AdapterTypes'
+import { DataLoader } from '../DataLoader'
 
 /**
  * Base class that contains all the shared stuff.
  */
 export abstract class BaseAdapter {
   serviceKey: string
+
   options: configOptions
+
   logger: globalThis.Console
+
   cdsSQL: string[]
+
   cdsModel: any
 
   /**
@@ -41,24 +44,28 @@ export abstract class BaseAdapter {
    * @abstract
    */
   abstract _cloneSchema(existing_schema: string, new_schema: string): Promise<void>
+
   /**
    * Get all Schemas
    *
    * @abstract
    */
   abstract _getSchemas(): Promise<string[]>
+
   /**
    * Clone Tenent Schema
    *
    * @abstract
    */
   abstract _createCloneSchemaFunction(): Promise<void>
+
   /**
    * Drop Tenent Schema
    *
    * @abstract
    */
   abstract _createDropSchemaFunction(): Promise<void>
+
   /**
    * Fully deploy the cds data model to the reference database.
    * The reference database needs to the cleared first.
@@ -105,18 +112,6 @@ export abstract class BaseAdapter {
   abstract getViewDefinition(viewName: string): Promise<ViewDefinition>
 
   /*
-   * Hooks
-   */
-
-  /**
-   *
-   * @param {ChangeLog} changelog
-   */
-  protected beforeDeploy(changelog: ChangeLog) {
-    // Can be implemented in subclasses
-  }
-
-  /*
    * API functions
    */
 
@@ -129,8 +124,8 @@ export abstract class BaseAdapter {
    */
   public async drop({ dropAll = false }) {
     if (dropAll) {
-      let liquibaseOptions = this.liquibaseOptionsFor('dropAll')
-      await liquibase(liquibaseOptions).run('dropAll')
+      const options = this.liquibaseOptionsFor('dropAll')
+      await liquibase(options).run('dropAll')
     } else {
       await this._dropCdsEntitiesFromDatabase(this.serviceKey, false)
     }
@@ -141,7 +136,7 @@ export abstract class BaseAdapter {
    *
    * @param {boolean} isFullMode
    */
-  public async load(isFullMode: boolean = false) {
+  public async load(isFullMode = false) {
     await this.initCds()
     const loader = new DataLoader(this, isFullMode)
     // TODO: Make more flexible
@@ -168,7 +163,7 @@ export abstract class BaseAdapter {
     liquibaseOptions.defaultSchemaName = this.options.migrations.schema.reference
 
     // Revisit: Possible liquibase bug to not support changelogs by absolute path?
-    //liquibaseOptions.changeLogFile = `${__dirname}../../template/emptyChangelog.json`
+    // liquibaseOptions.changeLogFile = `${__dirname}../../template/emptyChangelog.json`
     const tmpChangelogPath = 'tmp/emptyChangelog.json'
     const dirname = path.dirname(tmpChangelogPath)
     if (!fs.existsSync(dirname)) {
@@ -259,11 +254,11 @@ export abstract class BaseAdapter {
     const viewDefinitions = {}
     for (const changeLog of diffChangeLog.data.databaseChangeLog) {
       if (changeLog.changeSet.changes[0].dropView) {
-        const viewName = changeLog.changeSet.changes[0].dropView.viewName
+        const { viewName } = changeLog.changeSet.changes[0].dropView
         viewDefinitions[viewName] = await this.getViewDefinition(viewName)
       }
       if (changeLog.changeSet.changes[0].createView) {
-        const viewName = changeLog.changeSet.changes[0].createView.viewName
+        const { viewName } = changeLog.changeSet.changes[0].createView
         viewDefinitions[viewName] = {
           name: viewName,
           definition: changeLog.changeSet.changes[0].createView.selectQuery,
@@ -294,7 +289,7 @@ export abstract class BaseAdapter {
           if (found) {
             // Update Tenant Schema
             await liquibase(liquibaseOptions).run(updateCmd)
-            this.logger.log(`[cds-dbm] - Schema ` + tenant + ` updated.`)
+            this.logger.log(`[cds-dbm] - Schema ${tenant} updated.`)
           } else {
             newSchemas.push(tenant)
           }
@@ -303,7 +298,7 @@ export abstract class BaseAdapter {
         }
       }
 
-      //Create Tenant Schemas
+      // Create Tenant Schemas
       for (let i = 0; i < newSchemas.length; i++) {
         const temporaryChangelogFile = `${this.options.migrations.deploy.tmpFile}`
         if (fs.existsSync(temporaryChangelogFile)) {
@@ -315,7 +310,7 @@ export abstract class BaseAdapter {
         }
 
         await this._synchronizeCloneDatabase(newSchemas[i])
-        this.logger.log(`[cds-dbm] - Schema ` + newSchemas[i] + ` created.`)
+        this.logger.log(`[cds-dbm] - Schema ${newSchemas[i]} created.`)
       }
     }
 
@@ -329,7 +324,7 @@ export abstract class BaseAdapter {
       this.logger.log(updateSQL.stdout)
     }
 
-    //unlink if not already completed through new tenant schemas
+    // unlink if not already completed through new tenant schemas
     if (newSchemas.length === 0) {
       fs.unlinkSync(temporaryChangelogFile)
     }
@@ -358,13 +353,13 @@ export abstract class BaseAdapter {
    *
    * @param {string} service
    */
-  protected async _dropCdsEntitiesFromDatabase(service: string, viewsOnly: boolean = true) {
+  protected async _dropCdsEntitiesFromDatabase(service: string, viewsOnly = true) {
     const model = await cds.load(this.options.service.model)
     const cdssql = cds.compile.to.sql(model)
     const dropViews = []
     const dropTables = []
 
-    for (let each of cdssql) {
+    for (const each of cdssql) {
       const [, table, entity] = each.match(/^\s*CREATE (?:(TABLE)|VIEW)\s+"?([^\s(]+)"?/im) || []
       if (!table) {
         dropViews.push({ DROP: { view: entity } })
