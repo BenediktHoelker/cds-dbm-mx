@@ -246,10 +246,11 @@ export abstract class BaseAdapter {
     await this._deployCdsToReferenceDatabase()
 
     // Update the changelog with the real changes and added views
-    diffChangeLogOptions.defaultSchemaName = this.options.migrations.schema.clone
-    diffChangeLogOptions.changeLogFile = temporaryChangelogFile
+    const liquibaseOptions2 = this.liquibaseOptionsFor('diffChangeLog')
+    liquibaseOptions2.defaultSchemaName = this.options.migrations.schema.clone
+    liquibaseOptions2.changeLogFile = temporaryChangelogFile
 
-    await liquibase(diffChangeLogOptions).run('diffChangeLog')
+    await liquibase(liquibaseOptions2).run('diffChangeLog')
 
     const diffChangeLog = ChangeLog.fromFile(temporaryChangelogFile)
 
