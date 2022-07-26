@@ -34,12 +34,16 @@ const handler = async (argv: any) => {
     const options = await config(service)
     const pgAdapter = new PostgresAdapter(service, options)
 
+    await pgAdapter.init()
+
     await pgAdapter.deploy({
       autoUndeploy: argv.autoUndeploy,
       dryRun: argv.dry,
       loadMode: argv.loadVia,
       createDb: argv.createDb,
     })
+
+    pgAdapter.exit()
   }
 }
 

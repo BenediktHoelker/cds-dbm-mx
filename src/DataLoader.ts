@@ -89,7 +89,7 @@ export class DataLoader {
    * @param cols
    */
   private async _performFullUpdate(entity, rows, cols) {
-    await this.adapter._truncateTable(entity.name.replace(/\.|-/g, '_'))
+    await this.adapter.truncateTable(entity.name.replace(/\.|-/g, '_'))
     for (const row of rows) {
       await INSERT.into(entity).columns(cols).values(row)
     }

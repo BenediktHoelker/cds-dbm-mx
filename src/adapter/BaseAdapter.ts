@@ -93,7 +93,7 @@ export abstract class BaseAdapter {
    *
    * @abstract
    */
-  abstract _truncateTable(table): Promise<void>
+  abstract truncateTable(table): Promise<void>
 
   /**
    * Create the database.
