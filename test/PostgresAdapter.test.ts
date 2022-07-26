@@ -1,8 +1,10 @@
 import fs from 'fs'
+// eslint-disable-next-line import/no-extraneous-dependencies
 import { v4 as uuid } from 'uuid'
+// eslint-disable-next-line camelcase
+import cds_deploy from '@sap/cds/lib/deploy'
 import adapterFactory from '../src/adapter'
 import { configOptions } from '../src/config'
-import cds_deploy from '@sap/cds/lib/deploy'
 import {
   getTableNamesFromPostgres,
   getCompiledSQL,
@@ -16,9 +18,9 @@ import { BaseAdapter } from '../src/adapter/BaseAdapter'
 
 describe('PostgresAdapter', () => {
   beforeEach(() => {
-    if (cds.services['db']) {
+    if (cds.services.db) {
       // @ts-ignore
-      cds.services['db'].disconnect()
+      cds.services.db.disconnect()
     }
   })
 
@@ -54,7 +56,7 @@ describe('PostgresAdapter', () => {
 
     beforeEach(async () => {
       // @ts-ignore
-      cds.env.requires.db = Object.assign({ kind: 'postgres' }, options.service)
+      cds.env.requires.db = { kind: 'postgres', ...options.service }
       // @ts-ignore
       cds.env.requires.postgres = options.service
       console.log(cds.env.requires)
@@ -95,7 +97,7 @@ describe('PostgresAdapter', () => {
     beforeEach(async () => {
       // setup PostgreSQL
       // @ts-ignore
-      cds.env.requires.db = Object.assign({ kind: 'postgres' }, options.service)
+      cds.env.requires.db = { kind: 'postgres', ...options.service }
       // @ts-ignore
       cds.env.requires.postgres = options.service
 
@@ -190,7 +192,7 @@ describe('PostgresAdapter', () => {
         await cds_deploy(options.service.model[0], {}).to('db')
 
         // @ts-ignore
-        cds.services['db'].disconnect()
+        cds.services.db.disconnect()
       })
       it('should add additional tables and views', async () => {
         // load an updated model
@@ -307,11 +309,11 @@ describe('PostgresAdapter', () => {
 
         const model = await getCompiledSQL('db', options.service.model[0])
 
-        for (let each of model) {
+        for (const each of model) {
           const [, table, entity] = each.match(/^\s*CREATE (?:(TABLE)|VIEW)\s+"?([^\s(]+)"?/im) || []
           if (table) {
-            let cdsColumns = extractTableColumnNamesFromSQL(each)
-            let tableColumns = await extractColumnNamesFromPostgres(options, entity)
+            const cdsColumns = extractTableColumnNamesFromSQL(each)
+            const tableColumns = await extractColumnNamesFromPostgres(options, entity)
 
             expect(cdsColumns.map((c) => c.toLowerCase()).sort).toEqual(tableColumns.map((c) => c.column_name).sort)
           }
@@ -325,11 +327,11 @@ describe('PostgresAdapter', () => {
 
         const model = await getCompiledSQL('db', options.service.model[0])
 
-        for (let each of model) {
+        for (const each of model) {
           const [, table, entity] = each.match(/^\s*CREATE (?:(TABLE)|VIEW)\s+"?([^\s(]+)"?/im) || []
           if (table) {
-            let cdsColumns = extractTableColumnNamesFromSQL(each)
-            let tableColumns = await extractColumnNamesFromPostgres(options, entity)
+            const cdsColumns = extractTableColumnNamesFromSQL(each)
+            const tableColumns = await extractColumnNamesFromPostgres(options, entity)
 
             expect(cdsColumns.map((c) => c.toLowerCase()).sort).toEqual(tableColumns.map((c) => c.column_name).sort)
           }
@@ -357,7 +359,7 @@ describe('PostgresAdapter', () => {
     beforeEach(async () => {
       // setup PostgreSQL
       // @ts-ignore
-      cds.env.requires.db = Object.assign({ kind: 'postgres' }, options.service)
+      cds.env.requires.db = { kind: 'postgres', ...options.service }
       // @ts-ignore
       cds.env.requires.postgres = options.service
 
@@ -386,7 +388,7 @@ describe('PostgresAdapter', () => {
     beforeEach(async () => {
       // setup PostgreSQL
       // @ts-ignore
-      cds.env.requires.db = Object.assign({ kind: 'postgres' }, options.service)
+      cds.env.requires.db = { kind: 'postgres', ...options.service }
       // @ts-ignore
       cds.env.requires.postgres = options.service
 

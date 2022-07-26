@@ -31,8 +31,7 @@
     "UPDATE": true,
     "DELETE": true,
     "CREATE": true,
-    "DROP": true,
-    "cds": true
+    "DROP": true
   },
   "rules": {
     "prettier/prettier": [

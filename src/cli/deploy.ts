@@ -1,10 +1,11 @@
+/* eslint-disable no-await-in-loop */
 import { array, boolean } from 'yargs'
 import { config } from '../config'
-import adapterFactory from '../adapter'
+import { PostgresAdapter } from '../adapter/PostgresAdapter'
 
-exports.command = 'deploy [services]'
-exports.desc = 'Dynamically identifies changes in your cds data model and deploys them to the database'
-exports.builder = {
+const command = 'deploy [services]'
+const desc = 'Dynamically identifies changes in your cds data model and deploys them to the database'
+const builder = {
   service: {
     alias: 's',
     type: array,
@@ -27,11 +28,13 @@ exports.builder = {
     type: boolean,
   },
 }
-exports.handler = async (argv: any) => {
+
+const handler = async (argv: any) => {
   for (const service of argv.service) {
     const options = await config(service)
-    const adapter = await adapterFactory(service, options)
-    await adapter!.deploy({
+    const pgAdapter = new PostgresAdapter(service, options)
+
+    await pgAdapter.deploy({
       autoUndeploy: argv.autoUndeploy,
       dryRun: argv.dry,
       loadMode: argv.loadVia,
@@ -39,3 +42,5 @@ exports.handler = async (argv: any) => {
     })
   }
 }
+
+export { command, desc, builder, handler }

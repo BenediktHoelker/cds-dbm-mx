@@ -107,7 +107,7 @@ export abstract class BaseAdapter {
    *
    * @abstract
    */
-  abstract liquibaseOptionsFor(cmd: string): liquibaseOptions
+  abstract liquibaseOptionsFor(): liquibaseOptions
 
   abstract getViewDefinition(viewName: string): Promise<ViewDefinition>
 
@@ -126,7 +126,7 @@ export abstract class BaseAdapter {
    */
   public async drop({ dropAll = false }) {
     if (dropAll) {
-      const options = this.liquibaseOptionsFor('dropAll')
+      const options = this.liquibaseOptionsFor()
       await liquibase(options).run('dropAll')
     } else {
       await this._dropCdsEntitiesFromDatabase(this.serviceKey, false)
@@ -163,7 +163,7 @@ export abstract class BaseAdapter {
     }
 
     // run update to create internal liquibase tables
-    let options = this.liquibaseOptionsFor('update')
+    let options = this.liquibaseOptionsFor()
     options.defaultSchemaName = this.options.migrations.schema.reference
 
     // Revisit: Possible liquibase bug to not support changelogs by absolute path?
@@ -181,7 +181,7 @@ export abstract class BaseAdapter {
     fs.unlinkSync(tmpChangelogPath)
 
     // create the diff
-    options = this.liquibaseOptionsFor('diff')
+    options = this.liquibaseOptionsFor()
     options.outputFile = saveOutputFile
 
     await liquibase(options).run('diff')
@@ -232,7 +232,7 @@ export abstract class BaseAdapter {
 
     // Create the initial changelog
     const diffChangeLogOptions = {
-      ...this.liquibaseOptionsFor('diffChangeLog'),
+      ...this.liquibaseOptionsFor(),
       defaultSchemaName: this.options.migrations.schema.default,
       referenceDefaultSchemaName: this.options.migrations.schema.clone,
       changeLogFile: temporaryChangelogFile,
@@ -246,7 +246,7 @@ export abstract class BaseAdapter {
     await this._deployCdsToReferenceDatabase()
 
     // Update the changelog with the real changes and added views
-    const liquibaseOptions2 = this.liquibaseOptionsFor('diffChangeLog')
+    const liquibaseOptions2 = this.liquibaseOptionsFor()
     liquibaseOptions2.defaultSchemaName = this.options.migrations.schema.clone
     liquibaseOptions2.changeLogFile = temporaryChangelogFile
 
@@ -295,7 +295,7 @@ export abstract class BaseAdapter {
     // Either log the update sql or deploy it to the database
     const updateCmd = dryRun ? 'updateSQL' : 'update'
 
-    const updateOptions = { ...this.liquibaseOptionsFor(updateCmd), changeLogFile: temporaryChangelogFile }
+    const updateOptions = { ...this.liquibaseOptionsFor(), changeLogFile: temporaryChangelogFile }
 
     const updateSQL: any = await liquibase(updateOptions).run(updateCmd)
     const newSchemas = []

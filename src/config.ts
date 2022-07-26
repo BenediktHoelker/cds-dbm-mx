@@ -1,3 +1,5 @@
+import cds from '@sap/cds'
+
 interface migrationOptions {
   multitenant?: boolean
   schema?: {

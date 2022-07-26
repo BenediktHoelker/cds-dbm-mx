@@ -19,6 +19,6 @@ exports.handler = async (argv: any) => {
   for (const service of argv.service) {
     const options = await config(service)
     const adapter = await adapterFactory(service, options)
-    await adapter!.diff(argv.toFile)
+    // await adapter!.diff(argv.toFile)
   }
 }
