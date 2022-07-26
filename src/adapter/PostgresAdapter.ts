@@ -19,7 +19,7 @@ import { DataLoader } from '../DataLoader'
  *
  * @param {Changelog} changelog
  */
-const removePostgreSystemViewsFromChangelog = (changelog) => {
+function removePostgreSystemViewsFromChangelog(changelog) {
   for (const changeLog of changelog.data.databaseChangeLog) {
     changeLog.changeSet.changes = changeLog.changeSet.changes.filter((change) => {
       return (
@@ -30,6 +30,21 @@ const removePostgreSystemViewsFromChangelog = (changelog) => {
       )
     })
   }
+}
+
+function initChangeLogFile(name: string): string {
+  const fileName = `tmp/_${name}.json`
+  const dirname = path.dirname(fileName)
+
+  if (fs.existsSync(fileName)) {
+    fs.unlinkSync(fileName)
+  }
+
+  if (!fs.existsSync(dirname)) {
+    fs.mkdirSync(dirname)
+  }
+
+  return fileName
 }
 
 export class PostgresAdapter {
@@ -46,6 +61,10 @@ export class PostgresAdapter {
   cdsModel: any
 
   client: Client
+
+  referenceSchema: '_cdsdbm_ref'
+
+  defaultSchema: 'public'
 
   /**
    * The constructor
@@ -113,14 +132,12 @@ export class PostgresAdapter {
     }
 
     return {
+      url,
       username: user,
       password: password.toString(),
       referenceUrl: url,
       referenceUsername: user,
       referencePassword: password.toString(),
-      url,
-      classpath: `${__dirname}/../../drivers/postgresql-42.3.2.jar`,
-      driver: 'org.postgresql.Driver',
     }
   }
 
@@ -134,7 +151,8 @@ export class PostgresAdapter {
       },
     } = this.options
     const response = await this.client.query('SELECT schema_name FROM information_schema.schemata;')
-    const existingSchemas = response.rows as string[]
+    // eslint-disable-next-line camelcase
+    const existingSchemas = response.rows.map(({ schema_name }) => schema_name)
 
     existingSchemas.push(defaultSchema)
     return existingSchemas
@@ -172,13 +190,7 @@ export class PostgresAdapter {
   /**
    *
    */
-  async dropViewsFromCloneDatabase(): Promise<void> {
-    const {
-      migrations: {
-        schema: { clone: cloneSchema },
-      },
-    } = this.options
-
+  async dropViewsFromSchema(schema: string): Promise<void> {
     const queries = this.cdsSQL
       .map((query) => {
         const [, table, entity] = query.match(/^\s*CREATE (?:(TABLE)|VIEW)\s+"?([^\s(]+)"?/im) || []
@@ -191,33 +203,8 @@ export class PostgresAdapter {
 
     const query = queries.join(';')
 
-    await this.client.query(`SET search_path TO ${cloneSchema};`)
+    await this.client.query(`SET search_path TO ${schema};`)
     await this.client.query(query)
-  }
-
-  async synchronizeCloneDatabase(schema: string) {
-    const cloneSchema = schema
-    const temporaryChangelogFile = `${this.options.migrations.deploy.tmpFile}`
-
-    await this.client.query(`DROP SCHEMA IF EXISTS ${cloneSchema} CASCADE; CREATE SCHEMA ${cloneSchema};`)
-
-    await this.liquibase.run('diffChangeLog', {
-      defaultSchemaName: cloneSchema,
-      referenceDefaultSchemaName: this.options.migrations.schema!.default,
-      changeLogFile: temporaryChangelogFile,
-    })
-
-    // Remove unnecessary stuff
-    const diffChangeLog = ChangeLog.fromFile(temporaryChangelogFile)
-    removePostgreSystemViewsFromChangelog(diffChangeLog)
-    diffChangeLog.toFile(temporaryChangelogFile)
-
-    await this.liquibase.run('update', {
-      defaultSchemaName: cloneSchema,
-      changeLogFile: temporaryChangelogFile,
-    })
-
-    fs.unlinkSync(temporaryChangelogFile)
   }
 
   /*
@@ -258,12 +245,11 @@ export class PostgresAdapter {
    * all the views and we do not want to do this with a potential production database.
    *
    */
-  async deploy({ autoUndeploy = false, loadMode = null, dryRun = false }) {
+  async deploy(args) {
     const {
       migrations: {
-        schema: { clone: cloneSchema, default: defaultSchema, reference: referenceSchema, tenants },
+        schema: { tenants },
         multitenant: isMultitenant,
-        deploy: { undeployFile },
       },
     } = this.options
 
@@ -271,40 +257,62 @@ export class PostgresAdapter {
 
     await this.initCds()
 
-    const temporaryChangelogFile = `tmp/_autodeploy_${defaultSchema}.json`
-    const dirname = path.dirname(temporaryChangelogFile)
-
-    if (!fs.existsSync(dirname)) {
-      fs.mkdirSync(dirname)
-    }
-
     // Deploy the current state to the reference database
     await this.deployCdsToReferenceDatabase()
 
+    const existingSchemas = await this.getSchemas()
+
+    if (isMultitenant && tenants) {
+      const queryCreateNewSchemas = tenants
+        .filter((tenant) => !existingSchemas.includes(tenant))
+        .map((tenant) => `CREATE SCHEMA ${tenant};`)
+        .join()
+
+      await this.client.query(queryCreateNewSchemas)
+    }
+
+    for (const tenant of tenants) {
+      // eslint-disable-next-line no-await-in-loop
+      await this.updateSchema({ schema: tenant, ...args })
+    }
+
+    if (!args.dryRun) {
+      this.logger.log(`[cds-dbm] - delta successfully deployed to the database`)
+
+      if (args.loadMode) {
+        // await this.load(loadMode.toLowerCase() === 'full')
+      }
+    }
+  }
+
+  async updateSchema({ schema, autoUndeploy = false, undeployFile }) {
     // Setup the clone
-    await this.synchronizeCloneDatabase(cloneSchema)
+    const cloneSchema = await this.createClone(schema)
 
     // Drop the known views from the clone
-    await this.dropViewsFromCloneDatabase()
+    await this.dropViewsFromSchema(cloneSchema)
+
+    const dropViewsChangeLogFile = initChangeLogFile('dropViews')
 
     // Create the initial changelog
     await this.liquibase.run('diffChangeLog', {
-      defaultSchemaName: defaultSchema,
-      referenceDefaultSchemaName: cloneSchema,
-      changeLogFile: temporaryChangelogFile,
+      defaultSchemaName: cloneSchema,
+      referenceDefaultSchemaName: schema,
+      changeLogFile: dropViewsChangeLogFile,
     })
 
-    const dropViewsChangeLog = ChangeLog.fromFile(temporaryChangelogFile)
-    fs.unlinkSync(temporaryChangelogFile)
+    const dropViewsChangeLog = ChangeLog.fromFile(dropViewsChangeLogFile)
+
+    const diffChangeLogFile = initChangeLogFile('diff')
 
     // Update the changelog with the real changes and added views
     await this.liquibase.run('diffChangeLog', {
-      defaultSchemaName: cloneSchema,
-      referenceDefaultSchemaName: referenceSchema,
-      changeLogFile: temporaryChangelogFile,
+      defaultSchemaName: schema,
+      referenceDefaultSchemaName: this.referenceSchema,
+      changeLogFile: diffChangeLogFile,
     })
 
-    const diffChangeLog = ChangeLog.fromFile(temporaryChangelogFile)
+    const diffChangeLog = ChangeLog.fromFile(diffChangeLogFile)
 
     // Merge the changelogs
     const changeLogs = [...diffChangeLog.data.databaseChangeLog, dropViewsChangeLog.data.databaseChangeLog]
@@ -340,55 +348,36 @@ export class PostgresAdapter {
 
     removePostgreSystemViewsFromChangelog(diffChangeLog)
 
-    diffChangeLog.toFile(temporaryChangelogFile)
+    diffChangeLog.toFile(diffChangeLogFile)
 
-    // Either log the update sql or deploy it to the database
-    const updateCmd = dryRun ? 'updateSQL' : 'update'
+    await this.liquibase.run('update', {
+      changeLogFile: diffChangeLogFile,
+    })
+  }
 
-    const updateSQL: any = await this.liquibase.run(updateCmd, { changeLogFile: temporaryChangelogFile })
-    const newSchemas = []
+  async createClone(schema: string): Promise<string> {
+    const cloneSchema = `_clone_${schema}`
+    const cloneChangeLogFile = initChangeLogFile(cloneSchema)
 
-    if (isMultitenant && tenants) {
-      const existingSchemas = await this.getSchemas()
+    await this.client.query(`DROP SCHEMA IF EXISTS ${cloneSchema} CASCADE; CREATE SCHEMA ${cloneSchema};`)
 
-      for (const tenant of tenants) {
-        const found = existingSchemas.find((schema: any) => schema.schema_name === tenant)
+    await this.liquibase.run('diffChangeLog', {
+      defaultSchemaName: cloneSchema,
+      referenceDefaultSchemaName: schema,
+      changeLogFile: cloneChangeLogFile,
+    })
 
-        if (found) {
-          // Update Tenant Schema
-          // REVISIT: keep await in loop for now, to get separated errors
-          // eslint-disable-next-line no-await-in-loop
-          await this.liquibase.run(updateCmd, { defaultSchemaName: tenant })
-          this.logger.log(`[cds-dbm] - Schema ${tenant} updated.`)
-        } else {
-          newSchemas.push(tenant)
-        }
-      }
+    // Remove unnecessary stuff
+    const diffChangeLog = ChangeLog.fromFile(cloneChangeLogFile)
+    removePostgreSystemViewsFromChangelog(diffChangeLog)
+    diffChangeLog.toFile(cloneChangeLogFile)
 
-      // Create Tenant Schemas
-      for (const newSchema of newSchemas) {
-        // REVISIT: keep await in loop for now, to get separated errors
-        // eslint-disable-next-line no-await-in-loop
-        await this.synchronizeCloneDatabase(newSchema)
+    await this.liquibase.run('update', {
+      defaultSchemaName: cloneSchema,
+      changeLogFile: cloneChangeLogFile,
+    })
 
-        this.logger.log(`[cds-dbm] - Schema ${newSchema} created.`)
-      }
-    }
-
-    if (!dryRun) {
-      this.logger.log(`[cds-dbm] - delta successfully deployed to the database`)
-
-      if (loadMode) {
-        // await this.load(loadMode.toLowerCase() === 'full')
-      }
-    } else {
-      this.logger.log(updateSQL.stdout)
-    }
-
-    // unlink if not already completed through new tenant schemas
-    if (newSchemas.length === 0) {
-      fs.unlinkSync(temporaryChangelogFile)
-    }
+    return cloneSchema
   }
 
   async getViewDefinition(viewName: string): Promise<ViewDefinition> {
@@ -459,7 +448,7 @@ export class PostgresAdapter {
    * @override
    */
   async deployCdsToReferenceDatabase() {
-    const referenceSchema = this.options.migrations.schema!.reference
+    const { referenceSchema } = this
 
     await this.client.query(`DROP SCHEMA IF EXISTS ${referenceSchema} CASCADE`)
     await this.client.query(`CREATE SCHEMA ${referenceSchema}`)

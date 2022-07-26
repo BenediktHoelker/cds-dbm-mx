@@ -18,6 +18,8 @@ class Liquibase {
   constructor(params = {}) {
     const defaultParams = {
       liquibase: path.join(__dirname, './../liquibase/liquibase'), // Liquibase executable
+      classpath: `${__dirname}/../drivers/postgresql-42.3.2.jar`,
+      driver: 'org.postgresql.Driver',
     }
     this.params = { ...params, ...defaultParams }
   }
