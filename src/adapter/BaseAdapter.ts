@@ -4,7 +4,7 @@ import path from 'path'
 import liquibase from '../liquibase'
 import { configOptions, liquibaseOptions } from '../config'
 import { ChangeLog } from '../ChangeLog'
-import { sortByCasadingViews } from '../util'
+import { sortByCascadingViews } from '../util'
 import { ViewDefinition } from '../types/AdapterTypes'
 import { DataLoader } from '../DataLoader'
 
@@ -366,7 +366,7 @@ export abstract class BaseAdapter {
     }
 
     this.cdsSQL = cds.compile.to.sql(this.cdsModel) as unknown as string[]
-    this.cdsSQL.sort(sortByCasadingViews)
+    this.cdsSQL.sort(sortByCascadingViews)
   }
 
   /**

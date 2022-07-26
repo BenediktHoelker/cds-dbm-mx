@@ -3,7 +3,7 @@
  * @param a
  * @param b
  */
-const sortByCasadingViews = (a: any, b: any) => {
+const sortByCascadingViews = (a: any, b: any) => {
   const [, tableA, entityA] = a.match(/^\s*CREATE (?:(TABLE)|VIEW)\s+"?([^\s(]+)"?/im) || []
   const [, tableB, entityB] = b.match(/^\s*CREATE (?:(TABLE)|VIEW)\s+"?([^\s(]+)"?/im) || []
 
@@ -26,4 +26,4 @@ const sortByCasadingViews = (a: any, b: any) => {
   return 0
 }
 
-export { sortByCasadingViews }
+export { sortByCascadingViews }

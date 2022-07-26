@@ -2,6 +2,13 @@ import childProcess from 'child_process'
 import path from 'path'
 import { liquibaseOptions } from './config'
 
+function transformObjectToCmdString(params) {
+  return Object.entries(params)
+    .filter(([key]) => key !== 'liquibase')
+    .map(([key, value]) => `--${key}=${value}`)
+    .join(' ')
+}
+
 class Liquibase {
   params: liquibaseOptions
 
@@ -12,7 +19,7 @@ class Liquibase {
     const defaultParams = {
       liquibase: path.join(__dirname, './../liquibase/liquibase'), // Liquibase executable
     }
-    this.params = Object.assign({}, defaultParams, params)
+    this.params = { ...params, ...defaultParams }
   }
 
   /**
@@ -22,8 +29,8 @@ class Liquibase {
    * @param {string} params any parameters for the command
    * @returns {Promise} Promise of a node child process.
    */
-  public run(action = 'update', params = '') {
-    return this._exec(`${this._command} ${action} ${params}`)
+  public run(action = 'update', params = {}) {
+    return this.exec(`${this.command} ${transformObjectToCmdString(params)} ${action}`)
   }
 
   /**
@@ -32,16 +39,8 @@ class Liquibase {
    * @returns {string}
    * @private
    */
-  get _command() {
-    let cmd = `${this.params.liquibase}`
-
-    Object.keys(this.params).forEach((key) => {
-      if (key === 'liquibase') {
-        return
-      }
-      const value = this.params[key as keyof liquibaseOptions]
-      cmd = `${cmd} --${key}=${value}`
-    })
+  get command() {
+    const cmd = `${path.join(__dirname, './../liquibase/liquibase')} ${transformObjectToCmdString(this.params)}`
 
     return cmd
   }
@@ -56,27 +55,25 @@ class Liquibase {
    * @returns {Promise} Promise of a node child process.
    */
 
-  private _exec(command: string, options = {}) {
-    //console.warn(command)
-    let child
-    let promise = new Promise((resolve, reject) => {
-      child = childProcess.exec(command, options, (error: any, stdout: any, stderr: any) => {
+  // eslint-disable-next-line class-methods-use-this
+  private exec(command: string, options = {}) {
+    // console.warn(command)
+    return new Promise((resolve, reject) => {
+      childProcess.exec(command, options, (error: any, stdout: any) => {
         if (error) {
-          //console.log('\n', stdout)
-          //console.error('\n', stderr)
-
+          // console.log('\n', stdout)
+          // console.error('\n', stderr)
           // Log things in case of an error
+          // eslint-disable-next-line no-param-reassign
           error.stderr = stdout
           return reject(error)
         }
 
-        resolve({
-          stdout: stdout,
+        return resolve({
+          stdout,
         })
       })
     })
-    //promise.child = child
-    return promise
   }
 }
 
