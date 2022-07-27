@@ -62,9 +62,9 @@ export class PostgresAdapter {
 
   client: Client
 
-  referenceSchema: '_cdsdbm_ref'
+  referenceSchema = '_cdsdbm_ref'
 
-  defaultSchema: 'public'
+  defaultSchema = 'public'
 
   /**
    * The constructor
@@ -286,23 +286,6 @@ export class PostgresAdapter {
   }
 
   async updateSchema({ schema, autoUndeploy = false, undeployFile }) {
-    // Setup the clone
-    const cloneSchema = await this.createClone(schema)
-
-    // Drop the known views from the clone
-    await this.dropViewsFromSchema(cloneSchema)
-
-    const dropViewsChangeLogFile = initChangeLogFile('dropViews')
-
-    // Create the initial changelog
-    await this.liquibase.run('diffChangeLog', {
-      defaultSchemaName: cloneSchema,
-      referenceDefaultSchemaName: schema,
-      changeLogFile: dropViewsChangeLogFile,
-    })
-
-    const dropViewsChangeLog = ChangeLog.fromFile(dropViewsChangeLogFile)
-
     const diffChangeLogFile = initChangeLogFile('diff')
 
     // Update the changelog with the real changes and added views
@@ -315,7 +298,7 @@ export class PostgresAdapter {
     const diffChangeLog = ChangeLog.fromFile(diffChangeLogFile)
 
     // Merge the changelogs
-    const changeLogs = [...diffChangeLog.data.databaseChangeLog, dropViewsChangeLog.data.databaseChangeLog]
+    const changeLogs = [...diffChangeLog.data.databaseChangeLog]
 
     // Process the changelog
     if (!autoUndeploy) {
@@ -351,6 +334,7 @@ export class PostgresAdapter {
     diffChangeLog.toFile(diffChangeLogFile)
 
     await this.liquibase.run('update', {
+      defaultSchemaName: schema,
       changeLogFile: diffChangeLogFile,
     })
   }
@@ -376,6 +360,9 @@ export class PostgresAdapter {
       defaultSchemaName: cloneSchema,
       changeLogFile: cloneChangeLogFile,
     })
+
+    // Drop the known views from the clone
+    await this.dropViewsFromSchema(cloneSchema)
 
     return cloneSchema
   }
