@@ -61,6 +61,28 @@ interface liquibaseOptions {
   driver?: string
 }
 
+interface serviceOptions {
+  name: string
+  kind?: string
+  label?: string
+  dialect?: string
+  model: string[]
+  tags?: string[]
+  impl?: string
+  credentials: credentials
+}
+
+interface serviceOptions {
+  name: string
+  kind?: string
+  label?: string
+  dialect?: string
+  model: string[]
+  tags?: string[]
+  impl?: string
+  credentials: credentials
+}
+
 interface configOptions {
   service: serviceOptions
   migrations: migrationOptions
